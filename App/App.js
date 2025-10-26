@@ -12,9 +12,10 @@ import {
   Dimensions,
   ActivityIndicator,
   Animated,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons"; // Keep for utility icons (copy, eye, help)
 import * as SMS from "expo-sms";
 import * as Clipboard from "expo-clipboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -91,8 +92,16 @@ async function generateSignature(privateKey, toAddress, amountEth) {
   return signedTx;
 }
 
+// --- Image Assets Mapping ---
+const txnIcons = {
+  Transfer: require("./assets/icons/transfer.png"),
+  Swap: require("./assets/icons/swap.png"),
+  Bridge: require("./assets/icons/bridge.png"),
+};
+
+
 // ------------------------------------
-// --- REUSABLE COMPONENTS (Font Application) ---
+// --- REUSABLE COMPONENTS (MODIFIED) ---
 // ------------------------------------
 
 const FloatingIcons = () => {
@@ -104,15 +113,15 @@ const FloatingIcons = () => {
       Animated.loop(
         Animated.sequence([
           Animated.timing(animValue, {
-            toValue: 1.1,
-            duration: 2500,
-            useNativeDriver: true,
-            delay: index * 500,
+              toValue: 1.1,
+              duration: 2500,
+              useNativeDriver: true,
+              delay: index * 500,
           }),
           Animated.timing(animValue, {
-            toValue: 1,
-            duration: 2500,
-            useNativeDriver: true,
+              toValue: 1,
+              duration: 2500,
+              useNativeDriver: true,
           }),
         ])
       )
@@ -137,10 +146,10 @@ const FloatingIcons = () => {
 
         return (
           <Animated.View
-            key={token.symbol}
-            style={[
-              styles.floatingIcon,
-              {
+              key={token.symbol}
+              style={[
+                styles.floatingIcon,
+                {
                 top: pos.top,
                 left: pos.left,
                 transform: [
@@ -149,10 +158,10 @@ const FloatingIcons = () => {
                   { rotate: `${pos.rotate}deg` },
                   { scale: animationValues[index] },
                 ],
-              },
-            ]}
+                },
+              ]}
           >
-            <Icon width={ICON_SIZE} height={ICON_SIZE} />
+              <Icon width={ICON_SIZE} height={ICON_SIZE} />
           </Animated.View>
         );
       })}
@@ -160,22 +169,48 @@ const FloatingIcons = () => {
   );
 };
 
-const InfoCard = ({ title, message, iconName }) => (
+const InfoCard = ({ title, message, iconSource }) => (
   <View style={styles.infoCard}>
-    <Feather name={iconName} size={30} color={PRIMARY_COLOR} />
-    <Text style={[styles.infoTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>{title}</Text>
-    <Text style={[styles.infoMessage, { fontFamily: 'Poppins_Regular' }]}>{message}</Text>
+    <View style={styles.titleRow}>
+      <View style={styles.titleContainer}>
+        <Text style={styles.infoTitle}>{title}</Text>
+      </View>
+      {iconSource ? (
+        <Image
+          source={iconSource}
+          style={styles.icon}
+          resizeMode="contain"
+        />
+      ) : (
+        <Feather name="info" size={30} color={PRIMARY_COLOR} />
+      )}
+    </View>
+    <Text style={styles.infoMessage}>{message}</Text>
   </View>
 );
 
-const TransactionCard = ({ iconName, title, onPress }) => (
-  <TouchableOpacity style={styles.txnCard} onPress={onPress}>
-    <View style={styles.cardIconWrapper}>
-      <Feather name={iconName} size={28} color={PRIMARY_COLOR} />
-    </View>
-    <Text style={[styles.cardTitle, { fontFamily: 'Poppins_SemiBold' }]}>{title}</Text>
-  </TouchableOpacity>
-);
+
+const TransactionCard = ({ title, onPress }) => {
+  // Split the title to get the key ('Transfer', 'Swap', or 'Bridge')
+  const key = title.split(' ')[0]; 
+  const imageSource = txnIcons[key]; 
+
+  return (
+    <TouchableOpacity style={styles.txnCard} onPress={onPress}>
+      <View style={styles.cardIconWrapper}>
+        <Image
+          source={imageSource}
+          style={{ width: 28, height: 28 }}
+          resizeMode="contain"
+        />
+      </View>
+      <Text style={[styles.cardTitle, { fontFamily: "Poppins_SemiBold" }]}>
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
 
 const InputWithLabel = ({
   label,
@@ -215,7 +250,7 @@ const InputWithLabel = ({
 );
 
 // ------------------------------------
-// --- MODALS (Font Application) ---
+// --- MODALS (Unchanged) ---
 // ------------------------------------
 
 const TokenSelectionModal = ({ visible, onClose, onSelect }) => (
@@ -230,21 +265,21 @@ const TokenSelectionModal = ({ visible, onClose, onSelect }) => (
         <Text style={[styles.modalTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Select Token</Text>
         <ScrollView>
           {tokenOptions.map((tokenItem) => {
-            const Icon = tokenItem.IconComponent;
-            return (
-              <TouchableOpacity
+              const Icon = tokenItem.IconComponent;
+              return (
+                <TouchableOpacity
                 key={tokenItem.symbol}
                 style={styles.tokenItem}
                 onPress={() => onSelect(tokenItem.symbol)}
-              >
+                >
                 <View style={styles.tokenIconWrapper}>
                   <Icon width={24} height={24} />
                 </View>
                 <Text style={[styles.tokenName, { fontFamily: 'Poppins_Regular' }]}>
                   {tokenItem.name} ({tokenItem.symbol})
                 </Text>
-              </TouchableOpacity>
-            );
+                </TouchableOpacity>
+              );
           })}
         </ScrollView>
       </View>
@@ -287,27 +322,27 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
           <Text style={[styles.modalTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Profile & Settings</Text>
 
           <InputWithLabel
-            label="Private Key:"
-            value={newKey}
-            onChangeText={setNewKey}
-            placeholder="Enter or change your private key"
-            secureTextEntry={!showKey}
-            icon={showKey ? "eye-off" : "eye"}
-            onIconPress={() => setShowKey(!showKey)}
-            error={error}
+              label="Private Key:"
+              value={newKey}
+              onChangeText={setNewKey}
+              placeholder="Enter or change your private key"
+              secureTextEntry={!showKey}
+              icon={showKey ? "eye-off" : "eye"}
+              onIconPress={() => setShowKey(!showKey)}
+              error={error}
           />
           <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
-            *Warning: Your private key grants full access to your funds. It is
-            only stored locally.
+              *Warning: Your private key grants full access to your funds. It is
+              only stored locally.
           </Text>
 
           <TouchableOpacity style={styles.actionButton} onPress={handleSave}>
-            <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>Save Private Key</Text>
+              <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>Save Private Key</Text>
           </TouchableOpacity>
 
           <View style={styles.separator} />
           <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
-            Current Nonce is managed automatically.
+              Current Nonce is managed automatically.
           </Text>
         </View>
       </View>
@@ -316,11 +351,11 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
 };
 
 // ------------------------------------
-// --- TRANSACTION SCREEN (Font Application) ---
+// --- TRANSACTION SCREEN (MODIFIED) ---
 // ------------------------------------
 
 const TransactionScreen = ({
-  type,
+  type, // e.g., "Transfer" or "Swap"
   privateKey,
   onSignatureGenerated,
   onGoBack,
@@ -343,6 +378,9 @@ const TransactionScreen = ({
   const CurrentTokenIcon = selectedTokenData
     ? selectedTokenData.IconComponent
     : null;
+    
+  // Get the correct image source for the InfoCard based on the transaction type
+  const transactionIconSource = txnIcons[type];
 
   const validateInputs = () => {
     const newErrors = {};
@@ -370,7 +408,7 @@ const TransactionScreen = ({
     try {
       const signedTx = await generateSignature(privateKey, toAddress, amount);
       onSignatureGenerated(signedTx);
-      onGoBack();
+      onGoBack(); // Go back to home after successful signature/SMS attempt
     } catch (err) {
       Alert.alert("Signature Error", err.message);
     } finally {
@@ -384,13 +422,12 @@ const TransactionScreen = ({
         <TouchableOpacity onPress={onGoBack} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={TEXT_COLOR} />
         </TouchableOpacity>
-        <Text style={[styles.txnScreenTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>{type} Setup</Text>
-        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.txnScreenContent}>
         <InfoCard
-          iconName={type === "Transfer" ? "send" : "repeat"}
+          // MODIFIED: Pass Image source instead of Feather icon name
+          iconSource={transactionIconSource}
           title={`${type} Transaction`}
           message={`Configure your offline ${type.toLowerCase()} details. The signed transaction will be sent via SMS to the relayer address.`}
         />
@@ -399,32 +436,32 @@ const TransactionScreen = ({
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { fontFamily: 'Poppins_Regular' }]}>Token:</Text>
           <TouchableOpacity
-            style={styles.dropdownContainer}
-            onPress={() => setIsTokenPickerVisible(true)}
+              style={styles.dropdownContainer}
+              onPress={() => setIsTokenPickerVisible(true)}
           >
-            {CurrentTokenIcon ? (
-              <View style={styles.tokenIconContainer}>
+              {CurrentTokenIcon ? (
+                <View style={styles.tokenIconContainer}>
                 <CurrentTokenIcon width={24} height={24} />
-              </View>
-            ) : (
-              <Feather
+                </View>
+              ) : (
+                <Feather
                 name="dollar-sign"
                 size={18}
                 color={LIGHT_TEXT_COLOR}
                 style={styles.inputIcon}
-              />
-            )}
-            <Text style={[styles.dropdownText, { fontFamily: 'Poppins_Regular' }]}>
-              {token || "Select your token"}
-            </Text>
-            <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />
+                />
+              )}
+              <Text style={[styles.dropdownText, { fontFamily: 'Poppins_Regular' }]}>
+                {token || "Select your token"}
+              </Text>
+              <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />
           </TouchableOpacity>
           {errors.token && <Text style={[styles.errorText, { fontFamily: 'Poppins_Regular' }]}>{errors.token}</Text>}
         </View>
 
         {/* Amount */}
         <InputWithLabel
-          label="Amount:"
+          label={type === "Transfer" ? "To Address:" : "Swap Destination:"}
           value={amount}
           onChangeText={setAmount}
           placeholder={`Enter ${token || "ETH"} amount`}
@@ -450,11 +487,11 @@ const TransactionScreen = ({
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={TEXT_COLOR} />
+              <ActivityIndicator color={TEXT_COLOR} />
           ) : (
-            <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>
-              Generate Signature & Send SMS
-            </Text>
+              <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>
+                Generate Signature & Send SMS
+              </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -479,7 +516,6 @@ export default function App() {
   const [fontsLoaded] = useFonts({
     // Replace the placeholders with the actual font files if you download them, 
     // or use Font.loadAsync with a URI if you prefer.
-    // Assuming you set up the project to map these names to the loaded files.
     'Playfair_Display_Bold': require('./assets/fonts/PlayfairDisplay-Bold.ttf'), // Placeholder path
     'BBH_Sans_Bartle': require('./assets/fonts/BBHSansBartle-Regular.ttf'), // Placeholder path
     'Poppins_Regular': require('./assets/fonts/Poppins-Regular.ttf'), // Placeholder path
@@ -568,107 +604,101 @@ export default function App() {
       case "Swap":
         return (
           <TransactionScreen
-            type={activeScreen}
-            privateKey={privateKey}
-            onSignatureGenerated={handleSignatureGenerated}
-            onGoBack={() => setActiveScreen("Home")}
+              type={activeScreen}
+              privateKey={privateKey}
+              onSignatureGenerated={handleSignatureGenerated}
+              onGoBack={() => setActiveScreen("Home")}
           />
         );
       case "Bridge":
         return (
           <SafeAreaView style={styles.safeArea}>
-            <View style={styles.txnScreenHeader}>
-              <TouchableOpacity
+              <View style={styles.txnScreenHeader}>
+                <TouchableOpacity
                 onPress={() => setActiveScreen("Home")}
                 style={styles.backButton}
-              >
+                >
                 <Feather name="arrow-left" size={24} color={TEXT_COLOR} />
-              </TouchableOpacity>
-              <Text style={[styles.txnScreenTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Bridge Coins</Text>
-              <View style={{ width: 24 }} />
-            </View>
-            <View style={styles.txnScreenContent}>
-              <InfoCard
-                iconName="tool"
-                title="Bridge Feature Under Construction"
-                message="This feature is coming soon! Bridging across chains requires complex offline signature generation. We are working hard to integrate it."
-              />
-            </View>
+                </TouchableOpacity>
+                <View style={{ width: 24 }} />
+              </View>
+              <View style={styles.txnScreenContent}>
+                <View style={styles.txnScreenContentBridge}>
+                  <Text>This feature is coming soon! Bridging across chains requires complex offline signature generation. We are working hard to integrate it.</Text>
+                </View>
+              </View>
           </SafeAreaView>
         );
       case "Home":
       default:
         return (
           <ScrollView contentContainerStyle={styles.scrollContent}>
-            {/* Header (Unchanged) */}
-            <View style={styles.header}>
-              <TouchableOpacity
+              {/* Header (Unchanged) */}
+              <View style={styles.header}>
+                <TouchableOpacity
                 onPress={() => setIsSettingsModalVisible(true)}
                 style={styles.profileButton}
-              >
+                >
                 <Feather
                   name="user"
                   size={24}
                   color={TEXT_COLOR}
                   style={styles.profileIcon}
                 />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.helpButton}>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.helpButton}>
                 <Feather
                   name="help-circle"
                   size={24}
                   color={LIGHT_TEXT_COLOR}
                 />
-              </TouchableOpacity>
-            </View>
+                </TouchableOpacity>
+              </View>
 
-            {/* Hero Section */}
-            <View style={styles.heroSection}>
-              <FloatingIcons />
-              {/* Playfair Display for main title, BBH Sans Bartle for subtitle */}
-              <Text style={[styles.heroTitle, styles.glowingText, { fontFamily: 'BBH_Sans_Bartle' }]}>CellFi</Text>
-              <Text style={[styles.heroSubtitle, styles.glowingText, { fontFamily: 'BBH_Sans_Bartle' }]}>
+              {/* Hero Section */}
+              <View style={styles.heroSection}>
+                <FloatingIcons />
+                {/* Playfair Display for main title, BBH Sans Bartle for subtitle */}
+                <Text style={[styles.heroTitle, styles.glowingText, { fontFamily: 'BBH_Sans_Bartle' }]}>CellFi</Text>
+                <Text style={[styles.heroSubtitle, styles.glowingText, { fontFamily: 'BBH_Sans_Bartle' }]}>
                 Your Secure Offline Transaction Hub
-              </Text>
-              <TouchableOpacity
+                </Text>
+                <TouchableOpacity
                 style={styles.completeProfileContainer}
                 onPress={() =>
                   !privateKey ? setIsSettingsModalVisible(true) : null
                 }
-              >
+                >
                 <Text style={[styles.completeProfileText, { fontFamily: 'Poppins_SemiBold' }]}>
                   {privateKey
                     ? "Ready for Transaction"
                     : "Complete your profile (Set Private Key)"}
                 </Text>
                 <Feather name="arrow-right" size={18} color={TEXT_COLOR} />
-              </TouchableOpacity>
-            </View>
+               </TouchableOpacity>
+              </View>
 
-            {/* Transaction Cards Section */}
-            <Text style={[styles.sectionTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Main Transactions</Text>
-            <View style={styles.cardsContainer}>
-              <TransactionCard
-                iconName="send"
+              {/* Transaction Cards Section */}
+              <Text style={[styles.sectionTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Main Transactions</Text>
+              <View style={styles.cardsContainer}>
+                <TransactionCard
                 title="Transfer"
                 onPress={() => handleTxnCardPress("Transfer")}
-              />
-              <TransactionCard
-                iconName="repeat"
+                />
+                <TransactionCard
                 title="Swap"
                 onPress={() => handleTxnCardPress("Swap")}
-              />
-              <TransactionCard
-                iconName="link"
-                title="Bridge Coins"
+                />
+                <TransactionCard
+                title="Bridge"
                 onPress={() => setActiveScreen("Bridge")}
-              />
-            </View>
+                />
+              </View>
 
-            {/* Last Signed Message */}
-            <View style={styles.messageBox}>
-              <Text style={[styles.label, { fontFamily: 'Poppins_Regular' }]}>Last Signed Transaction:</Text>
-              <View style={styles.messageContainer}>
+              {/* Last Signed Message */}
+              <View style={styles.messageBox}>
+                <Text style={[styles.label, { fontFamily: 'Poppins_Regular' }]}>Last Signed Transaction:</Text>
+                <View style={styles.messageContainer}>
                 <ScrollView style={{ maxHeight: 100 }}>
                   <Text style={[styles.messageText, { fontFamily: 'monospace' }]}>{signedMessage}</Text>
                 </ScrollView>
@@ -678,11 +708,11 @@ export default function App() {
                 >
                   <Feather name="copy" size={18} color={LIGHT_TEXT_COLOR} />
                 </TouchableOpacity>
-              </View>
-              <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
+                </View>
+                <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
                 The raw signed transaction is what you send to a relayer.
-              </Text>
-            </View>
+                </Text>
+              </View>
           </ScrollView>
         );
     }
@@ -712,7 +742,7 @@ export default function App() {
   );
 }
 
-// --- Styles (Finalized with Font References) ---
+// --- Styles (Finalized with Font References and Title Adjustments) ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: DARK_BG },
   scrollContent: {
@@ -726,7 +756,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  // Removed loadingText style as it was merged into the conditional block for better handling
 
   // --- Screens/Navigation Header ---
   txnScreenHeader: {
@@ -740,9 +769,22 @@ const styles = StyleSheet.create({
     borderBottomColor: BORDER_COLOR,
   },
   backButton: { padding: 5 },
+  // ADDED: New container for the icon and title to center them and remove the "box"
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1, // Allows the title/icon to take up space and align center
+    marginLeft: -24, // Counteract the width of the backButton for better centering
+  },
+  headerIcon: { 
+    width: 20, 
+    height: 20, 
+    marginRight: 8, 
+    tintColor: PRIMARY_COLOR 
+  },
   txnScreenTitle: {
     fontSize: 20,
-    fontWeight: "bold",
     color: TEXT_COLOR,
     fontFamily: 'BBH_Sans_Bartle',
   },
@@ -849,7 +891,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   txnCard: {
-    width: width / 3 - 30,
+    width: width / 3 - 20,
     backgroundColor: CARD_BG,
     borderRadius: 12,
     paddingVertical: 20,
@@ -872,32 +914,37 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_SemiBold'
   },
 
-  // Info Card
-  infoCard: {
-    backgroundColor: CARD_BG,
-    padding: 20,
-    borderRadius: 12,
-    alignItems: "center",
+infoCard: {
+    width: "100%",
     marginBottom: 25,
-    borderWidth: 1,
-    borderColor: BORDER_COLOR,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  titleContainer: {
+    flex: 1, // take all space except icon
+    paddingRight: 8, // space between title and icon
   },
   infoTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: TEXT_COLOR,
-    marginTop: 10,
-    fontFamily: 'BBH_Sans_Bartle',
+    fontFamily: "BBH_Sans_Bartle",
+  },
+  icon: {
+    width: 40,
+    height: 40,
   },
   infoMessage: {
-    fontSize: 14,
+    fontSize: 12,
     color: LIGHT_TEXT_COLOR,
-    textAlign: "center",
-    marginTop: 5,
-    fontFamily: 'Poppins_Regular',
+    fontFamily: "Poppins_Regular",
   },
 
-  // Input & Form Styles
+
   inputGroup: { marginBottom: 15, width: "100%" },
   label: {
     fontSize: 14,
