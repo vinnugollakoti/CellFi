@@ -23,6 +23,8 @@
     "dotenv": "^17.2.3",
     "ethers": "^5.8.0",
     "express": "^5.1.0",
+    "install": "^0.13.0",
+    "npm": "^11.6.2",
     "react-native-sms": "^1.12.0",
     "twilio": "^5.10.2"
   }
