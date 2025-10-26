@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ScrollView,
   View,
@@ -15,27 +15,27 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons"; // Keep for utility icons (copy, eye, help)
+import { Feather } from "@expo/vector-icons";
 import * as SMS from "expo-sms";
 import * as Clipboard from "expo-clipboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { ethers } from "ethers";
-import * as SplashScreen from 'expo-splash-screen';
-import { useFonts } from 'expo-font';
-import * as Font from 'expo-font';
+import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
+import * as Font from "expo-font";
 
 // --- Assuming these are correctly imported SVG components ---
-import ETHIcon from "./components/icons/ETHIcon"; 
-import BTCIcon from "./components/icons/BTCIcon"; 
-import USDTIcon from "./components/icons/USDTIcon"; 
-import BNBIcon from "./components/icons/BNBIcon"; 
-import SOLIcon from "./components/icons/SOLIcon"; 
+import ETHIcon from "./components/icons/ETHIcon";
+import BTCIcon from "./components/icons/BTCIcon";
+import USDTIcon from "./components/icons/USDTIcon";
+import BNBIcon from "./components/icons/BNBIcon";
+import SOLIcon from "./components/icons/SOLIcon";
 
 // Keep the splash screen visible while loading fonts and assets
 SplashScreen.preventAutoHideAsync();
 
-// --- Constants (Unchanged) ---
+// --- Constants (Centralized Configuration) ---
 const PRIMARY_COLOR = "#7E23E9";
 const DARK_BG = "#1A1A2E";
 const CARD_BG = "#2C2C40";
@@ -43,14 +43,19 @@ const TEXT_COLOR = "#FFFFFF";
 const LIGHT_TEXT_COLOR = "#B0B0D0";
 const BORDER_COLOR = "#3A3A5A";
 const ERROR_COLOR = "#FF6B6B";
+
 const PRIVATE_KEY_KEY = "user_private_key";
 const NONCE_KEY = "offline_nonce";
 const SEPOLIA_CHAIN_ID = 11155111;
-const SMS_RECIPIENT = "+918074503341";
+const SMS_RECIPIENT = "+916301181244";
+const SENDER_MOBILE_DEMO = "+919999999999";
+// NOTE: You MUST replace this with a valid RPC endpoint (e.g., Infura/Alchemy)
+const SEPOLIA_RPC_URL = "https://sepolia.infura.io/v3/ee5a05b510a943fd8cfd9584671a3809"; 
+const SWAP_CONTRACT_ADDRESS = "0x7a250d5630B4cF539739dF2C5cEABc630CEB4323"; // Uniswap V2 Router (Placeholder)
 
 const { width } = Dimensions.get("window");
 
-// --- Token Options (Unchanged) ---
+// --- Token Options ---
 const tokenOptions = [
   { name: "Ethereum", symbol: "ETH", IconComponent: ETHIcon },
   { name: "Bitcoin", symbol: "BTC", IconComponent: BTCIcon },
@@ -59,19 +64,24 @@ const tokenOptions = [
   { name: "Solana", symbol: "SOL", IconComponent: SOLIcon },
 ];
 
-// --- Utility Functions (Mocked/Simplified for presentation) ---
+// --- Image Assets Mapping (Placeholder paths) ---
+const txnIcons = {
+  Transfer: require("./assets/icons/transfer.png"),
+  Swap: require("./assets/icons/swap.png"),
+  Bridge: require("./assets/icons/bridge.png"),
+};
+
+// --- Ethers Provider Setup ---
+const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
+
+// --- Utility Functions ---
 const getPrivateKey = async () => AsyncStorage.getItem(PRIVATE_KEY_KEY);
 const setPrivateKey = async (key) =>
   AsyncStorage.setItem(PRIVATE_KEY_KEY, key.replace(/\s+/g, ""));
-const getNonce = async (walletAddress) => { return 0; };
-const incrementNonce = async () => { return 1; };
-const setupNonceSync = (walletAddress) => {};
 
-async function generateSignature(privateKey, toAddress, amountEth) {
+async function generateSignature(privateKey, toAddress, amountEth, nonce) {
   if (!privateKey.startsWith("0x")) privateKey = "0x" + privateKey.trim();
   const wallet = new ethers.Wallet(privateKey);
-
-  let nonce = await getNonce(wallet.address);
 
   const tx = {
     to: toAddress,
@@ -83,25 +93,11 @@ async function generateSignature(privateKey, toAddress, amountEth) {
   };
 
   const signedTx = await wallet.signTransaction(tx);
-
-  const state = await NetInfo.fetch();
-  if (!state.isConnected) {
-    await incrementNonce();
-  }
-
   return signedTx;
 }
 
-// --- Image Assets Mapping ---
-const txnIcons = {
-  Transfer: require("./assets/icons/transfer.png"),
-  Swap: require("./assets/icons/swap.png"),
-  Bridge: require("./assets/icons/bridge.png"),
-};
-
-
 // ------------------------------------
-// --- REUSABLE COMPONENTS (MODIFIED) ---
+// --- REUSABLE COMPONENTS ---
 // ------------------------------------
 
 const FloatingIcons = () => {
@@ -113,15 +109,16 @@ const FloatingIcons = () => {
       Animated.loop(
         Animated.sequence([
           Animated.timing(animValue, {
-              toValue: 1.1,
-              duration: 2500,
-              useNativeDriver: true,
-              delay: index * 500,
+            toValue: 1.1,
+            duration: 2500,
+            useNativeDriver: true,
+            delay: index * 500,
           }),
           Animated.timing(animValue, {
-              toValue: 1,
-              duration: 2500,
-              useNativeDriver: true,
+            toValue: 1,
+            duration: 2500,
+            useNativeDriver: true,
+            delay: 0,
           }),
         ])
       )
@@ -131,11 +128,11 @@ const FloatingIcons = () => {
   }, []);
 
   const fixedPositions = [
-    { top: '10%', left: '10%', rotate: 15 },
-    { top: '25%', left: '80%', rotate: -30 },
-    { top: '50%', left: '45%', rotate: 45 },
-    { top: '70%', left: '15%', rotate: -10 },
-    { top: '85%', left: '60%', rotate: 60 },
+    { top: "10%", left: "10%", rotate: 15 },
+    { top: "25%", left: "80%", rotate: -30 },
+    { top: "50%", left: "45%", rotate: 45 },
+    { top: "70%", left: "15%", rotate: -10 },
+    { top: "85%", left: "60%", rotate: 60 },
   ];
 
   return (
@@ -146,10 +143,10 @@ const FloatingIcons = () => {
 
         return (
           <Animated.View
-              key={token.symbol}
-              style={[
-                styles.floatingIcon,
-                {
+            key={token.symbol}
+            style={[
+              styles.floatingIcon,
+              {
                 top: pos.top,
                 left: pos.left,
                 transform: [
@@ -158,10 +155,10 @@ const FloatingIcons = () => {
                   { rotate: `${pos.rotate}deg` },
                   { scale: animationValues[index] },
                 ],
-                },
-              ]}
+              },
+            ]}
           >
-              <Icon width={ICON_SIZE} height={ICON_SIZE} />
+            <Icon width={ICON_SIZE} height={ICON_SIZE} />
           </Animated.View>
         );
       })}
@@ -189,11 +186,9 @@ const InfoCard = ({ title, message, iconSource }) => (
   </View>
 );
 
-
 const TransactionCard = ({ title, onPress }) => {
-  // Split the title to get the key ('Transfer', 'Swap', or 'Bridge')
-  const key = title.split(' ')[0]; 
-  const imageSource = txnIcons[key]; 
+  const key = title.split(" ")[0];
+  const imageSource = txnIcons[key];
 
   return (
     <TouchableOpacity style={styles.txnCard} onPress={onPress}>
@@ -211,6 +206,35 @@ const TransactionCard = ({ title, onPress }) => {
   );
 };
 
+// NEW COMPONENT: Displays a summary of the last transaction
+const LastTransactionCard = ({ transaction, onPress }) => {
+    if (!transaction.signedMessage) return null;
+    
+    const key = transaction.type.split(" ")[0];
+    const imageSource = txnIcons[key] || txnIcons.Transfer;
+    const date = new Date(transaction.timestamp).toLocaleTimeString();
+
+    return (
+        <TouchableOpacity style={styles.lastTxnCard} onPress={onPress}>
+            <View style={styles.cardIconWrapper}>
+                <Image
+                    source={imageSource}
+                    style={{ width: 24, height: 24 }}
+                    resizeMode="contain"
+                />
+            </View>
+            <View style={styles.lastTxnDetails}>
+                <Text style={[styles.cardTitle, { fontFamily: "Poppins_SemiBold", textAlign: 'left', fontSize: 16 }]}>
+                    {transaction.title}
+                </Text>
+                <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 2, fontSize: 12 }]}>
+                    Nonce: {transaction.nonce} | Signed at {date}
+                </Text>
+            </View>
+            <Feather name="chevron-right" size={24} color={LIGHT_TEXT_COLOR} />
+        </TouchableOpacity>
+    );
+};
 
 const InputWithLabel = ({
   label,
@@ -226,10 +250,18 @@ const InputWithLabel = ({
   error,
 }) => (
   <View style={styles.inputGroup}>
-    <Text style={[styles.label, { fontFamily: 'Poppins_Regular' }]}>{label}</Text>
-    <View style={styles.inputContainer}>
+    <Text style={[styles.label, { fontFamily: "Poppins_Regular" }]}>{label}</Text>
+    <View style={[
+        styles.inputContainer, 
+        !editable && { backgroundColor: BORDER_COLOR + '60', borderColor: BORDER_COLOR }
+    ]}>
       <TextInput
-        style={[styles.input, multiline && styles.multilineInput, { fontFamily: 'Poppins_Regular' }]}
+        style={[
+          styles.input,
+          multiline && styles.multilineInput,
+          { fontFamily: "Poppins_Regular" },
+          !editable && { color: LIGHT_TEXT_COLOR },
+        ]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -245,15 +277,15 @@ const InputWithLabel = ({
         </TouchableOpacity>
       )}
     </View>
-    {error && <Text style={[styles.errorText, { fontFamily: 'Poppins_Regular' }]}>{error}</Text>}
+    {error && (
+      <Text style={[styles.errorText, { fontFamily: "Poppins_Regular" }]}>
+        {error}
+      </Text>
+    )}
   </View>
 );
 
-// ------------------------------------
-// --- MODALS (Unchanged) ---
-// ------------------------------------
-
-const TokenSelectionModal = ({ visible, onClose, onSelect }) => (
+const TokenSelectionModal = ({ visible, onClose, onSelect, title = "Select Token", excludeSymbol = null }) => (
   <Modal
     visible={visible}
     transparent={true}
@@ -262,26 +294,35 @@ const TokenSelectionModal = ({ visible, onClose, onSelect }) => (
   >
     <Pressable style={styles.modalOverlay} onPress={onClose}>
       <View style={styles.modalContent}>
-        <Text style={[styles.modalTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Select Token</Text>
+        <Text style={[styles.modalTitle, { fontFamily: "BBH_Sans_Bartle" }]}>
+          {title}
+        </Text>
         <ScrollView>
-          {tokenOptions.map((tokenItem) => {
-              const Icon = tokenItem.IconComponent;
-              return (
-                <TouchableOpacity
+          {tokenOptions
+            .filter(tokenItem => tokenItem.symbol !== excludeSymbol)
+            .map((tokenItem) => {
+            const Icon = tokenItem.IconComponent;
+            return (
+              <TouchableOpacity
                 key={tokenItem.symbol}
                 style={styles.tokenItem}
                 onPress={() => onSelect(tokenItem.symbol)}
-                >
+              >
                 <View style={styles.tokenIconWrapper}>
                   <Icon width={24} height={24} />
                 </View>
-                <Text style={[styles.tokenName, { fontFamily: 'Poppins_Regular' }]}>
+                <Text style={[styles.tokenName, { fontFamily: "Poppins_Regular" }]}>
                   {tokenItem.name} ({tokenItem.symbol})
                 </Text>
-                </TouchableOpacity>
-              );
+              </TouchableOpacity>
+            );
           })}
         </ScrollView>
+        {excludeSymbol && (
+            <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 15 }]}>
+                {excludeSymbol} excluded from selection.
+            </Text>
+        )}
       </View>
     </Pressable>
   </Modal>
@@ -319,30 +360,34 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
       <View style={styles.modalOverlay}>
         <Pressable style={styles.modalDismissArea} onPress={onClose} />
         <View style={styles.settingsModalContent}>
-          <Text style={[styles.modalTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Profile & Settings</Text>
+          <Text style={[styles.modalTitle, { fontFamily: "BBH_Sans_Bartle" }]}>
+            Profile & Settings
+          </Text>
 
           <InputWithLabel
-              label="Private Key:"
-              value={newKey}
-              onChangeText={setNewKey}
-              placeholder="Enter or change your private key"
-              secureTextEntry={!showKey}
-              icon={showKey ? "eye-off" : "eye"}
-              onIconPress={() => setShowKey(!showKey)}
-              error={error}
+            label="Private Key:"
+            value={newKey}
+            onChangeText={setNewKey}
+            placeholder="Enter or change your private key"
+            secureTextEntry={!showKey}
+            icon={showKey ? "eye-off" : "eye"}
+            onIconPress={() => setShowKey(!showKey)}
+            error={error}
           />
-          <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
-              *Warning: Your private key grants full access to your funds. It is
-              only stored locally.
+          <Text style={[styles.note, { fontFamily: "Poppins_Regular" }]}>
+            *Warning: Your private key grants full access to your funds. It is
+            only stored locally.
           </Text>
 
           <TouchableOpacity style={styles.actionButton} onPress={handleSave}>
-              <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>Save Private Key</Text>
+            <Text style={[styles.actionButtonText, { fontFamily: "Poppins_SemiBold" }]}>
+              Save Private Key
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.separator} />
-          <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
-              Current Nonce is managed automatically.
+          <Text style={[styles.note, { fontFamily: "Poppins_Regular" }]}>
+            The current Nonce is synchronized automatically when you are online.
           </Text>
         </View>
       </View>
@@ -350,36 +395,88 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
   );
 };
 
+// NEW COMPONENT: Shows full details of the last transaction
+const TransactionDetailModal = ({ visible, onClose, transaction }) => {
+    if (!transaction) return null;
+
+    return (
+        <Modal
+            visible={visible}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={onClose}
+        >
+            <View style={styles.modalOverlay}>
+                <Pressable style={styles.modalDismissArea} onPress={onClose} />
+                <View style={styles.settingsModalContent}>
+                    <Text style={[styles.modalTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>
+                        {transaction.title} Details
+                    </Text>
+
+                    <Text style={[styles.label, { color: TEXT_COLOR }]}>Date: {new Date(transaction.timestamp).toLocaleString()}</Text>
+                    <Text style={[styles.label, { color: TEXT_COLOR }]}>Nonce: {transaction.nonce}</Text>
+                    <Text style={[styles.label, { color: TEXT_COLOR, marginTop: 15 }]}>Raw Signed Message (SMS Body):</Text>
+                    
+                    <View style={styles.messageContainer}>
+                        <ScrollView style={{ maxHeight: 200 }}>
+                            <Text style={[styles.messageText, { fontFamily: 'monospace' }]}>
+                                {transaction.signedMessage}
+                            </Text>
+                        </ScrollView>
+                        <TouchableOpacity
+                            onPress={() => Clipboard.setStringAsync(transaction.signedMessage)}
+                            style={styles.copyIcon}
+                        >
+                            <Feather name="copy" size={18} color={LIGHT_TEXT_COLOR} />
+                        </TouchableOpacity>
+                    </View>
+                    
+                    <TouchableOpacity style={[styles.actionButton, { marginTop: 30 }]} onPress={onClose}>
+                        <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>Close</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
 // ------------------------------------
-// --- TRANSACTION SCREEN (MODIFIED) ---
+// --- TRANSACTION SCREEN (UPDATED) ---
 // ------------------------------------
 
 const TransactionScreen = ({
-  type, // e.g., "Transfer" or "Swap"
+  type,
   privateKey,
+  currentNonce,
   onSignatureGenerated,
   onGoBack,
+  isOnline,
 }) => {
-  const [token, setToken] = useState("ETH");
+  const [token, setToken] = useState("ETH"); 
+  const [swapToToken, setSwapToToken] = useState("BTC"); 
   const [amount, setAmount] = useState("");
-  const [toAddress, setToAddress] = useState("");
+  
+  // To Address is only required for Transfer
+  const [toAddress, setToAddress] = useState(type === "Transfer" ? "" : SWAP_CONTRACT_ADDRESS); 
+
   const [errors, setErrors] = useState({});
   const [isTokenPickerVisible, setIsTokenPickerVisible] = useState(false);
+  const [isSwapToPickerVisible, setIsSwapToPickerVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setToken("ETH");
+    setSwapToToken("BTC");
     setAmount("");
-    setToAddress("");
     setErrors({});
+    // Set default recipient based on type
+    setToAddress(type === "Transfer" ? "" : SWAP_CONTRACT_ADDRESS);
   }, [type]);
 
   const selectedTokenData = tokenOptions.find((t) => t.symbol === token);
-  const CurrentTokenIcon = selectedTokenData
-    ? selectedTokenData.IconComponent
-    : null;
-    
-  // Get the correct image source for the InfoCard based on the transaction type
+  const CurrentTokenIcon = selectedTokenData ? selectedTokenData.IconComponent : null;
+  const SwapToTokenIcon = tokenOptions.find((t) => t.symbol === swapToToken)?.IconComponent;
+
   const transactionIconSource = txnIcons[type];
 
   const validateInputs = () => {
@@ -387,9 +484,19 @@ const TransactionScreen = ({
     if (!token) newErrors.token = "Please select a token.";
     if (!amount || isNaN(amount) || Number(amount) <= 0)
       newErrors.amount = "Enter a valid numeric amount.";
-    if (!toAddress) newErrors.toAddress = "Recipient address is required.";
-    else if (!ethers.isAddress(toAddress))
-      newErrors.toAddress = "Invalid Ethereum address.";
+
+    if (type === "Transfer") {
+      if (!toAddress) newErrors.toAddress = "Recipient address is required.";
+      else if (!ethers.isAddress(toAddress))
+        newErrors.toAddress = "Invalid Ethereum address.";
+    }
+
+    if (type === "Swap") {
+        if (!swapToToken) newErrors.swapToToken = "Please select a token to receive.";
+        // VALIDATION: User cannot swap a token to itself
+        if (token === swapToToken) newErrors.swapToToken = "Cannot swap a token to itself.";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -397,20 +504,30 @@ const TransactionScreen = ({
   const handleGenerateSignature = async () => {
     if (!validateInputs()) return;
     if (!privateKey) {
-      Alert.alert(
-        "Setup Required",
-        "Please set your private key in the profile settings first."
-      );
+      Alert.alert("Setup Required", "Please set your private key in the profile settings first.");
+      return;
+    }
+    if (currentNonce === null) {
+      Alert.alert("Nonce Error", "Nonce not loaded. Please wait.");
       return;
     }
 
     setLoading(true);
     try {
-      const signedTx = await generateSignature(privateKey, toAddress, amount);
-      onSignatureGenerated(signedTx);
-      onGoBack(); // Go back to home after successful signature/SMS attempt
+      const recipient = type === "Transfer" ? toAddress : SWAP_CONTRACT_ADDRESS;
+      
+      const signedTx = await generateSignature(
+        privateKey,
+        recipient,
+        amount,
+        currentNonce
+      );
+      
+      onSignatureGenerated(signedTx, type, isOnline, { from: token, to: swapToToken, amount, recipient });
+      onGoBack();
     } catch (err) {
-      Alert.alert("Signature Error", err.message);
+      Alert.alert("Signature Error", err.message || "Failed to sign transaction.");
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -426,42 +543,72 @@ const TransactionScreen = ({
 
       <ScrollView contentContainerStyle={styles.txnScreenContent}>
         <InfoCard
-          // MODIFIED: Pass Image source instead of Feather icon name
           iconSource={transactionIconSource}
           title={`${type} Transaction`}
           message={`Configure your offline ${type.toLowerCase()} details. The signed transaction will be sent via SMS to the relayer address.`}
         />
 
-        {/* Token Selection */}
+        {/* Token Selection: FROM */}
         <View style={styles.inputGroup}>
-          <Text style={[styles.label, { fontFamily: 'Poppins_Regular' }]}>Token:</Text>
+          <Text style={[styles.label, { fontFamily: "Poppins_Regular" }]}>
+            {type === "Swap" ? "Token to Send (FROM):" : "Token:"}
+          </Text>
           <TouchableOpacity
-              style={styles.dropdownContainer}
-              onPress={() => setIsTokenPickerVisible(true)}
+            style={styles.dropdownContainer}
+            onPress={() => setIsTokenPickerVisible(true)}
           >
-              {CurrentTokenIcon ? (
-                <View style={styles.tokenIconContainer}>
+            {CurrentTokenIcon ? (
+              <View style={styles.tokenIconContainer}>
                 <CurrentTokenIcon width={24} height={24} />
-                </View>
-              ) : (
-                <Feather
-                name="dollar-sign"
-                size={18}
-                color={LIGHT_TEXT_COLOR}
-                style={styles.inputIcon}
-                />
-              )}
-              <Text style={[styles.dropdownText, { fontFamily: 'Poppins_Regular' }]}>
-                {token || "Select your token"}
-              </Text>
-              <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />
+              </View>
+            ) : (
+              <Feather name="dollar-sign" size={18} color={LIGHT_TEXT_COLOR} style={styles.inputIcon} />
+            )}
+            <Text style={[styles.dropdownText, { fontFamily: "Poppins_Regular" }]}>
+              {token || "Select your token"}
+            </Text>
+            <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />
           </TouchableOpacity>
-          {errors.token && <Text style={[styles.errorText, { fontFamily: 'Poppins_Regular' }]}>{errors.token}</Text>}
+          {errors.token && (
+            <Text style={[styles.errorText, { fontFamily: "Poppins_Regular" }]}>
+              {errors.token}
+            </Text>
+          )}
         </View>
+        
+        {/* Token Selection: TO (SWAP ONLY) */}
+        {type === "Swap" && (
+            <View style={styles.inputGroup}>
+                <Text style={[styles.label, { fontFamily: "Poppins_Regular" }]}>
+                    Token to Receive (TO):
+                </Text>
+                <TouchableOpacity
+                    style={styles.dropdownContainer}
+                    onPress={() => setIsSwapToPickerVisible(true)}
+                >
+                    {SwapToTokenIcon ? (
+                        <View style={styles.tokenIconContainer}>
+                            <SwapToTokenIcon width={24} height={24} />
+                        </View>
+                    ) : (
+                        <Feather name="dollar-sign" size={18} color={LIGHT_TEXT_COLOR} style={styles.inputIcon} />
+                    )}
+                    <Text style={[styles.dropdownText, { fontFamily: "Poppins_Regular" }]}>
+                        {swapToToken || "Select token to receive"}
+                    </Text>
+                    <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />
+                </TouchableOpacity>
+                {errors.swapToToken && (
+                    <Text style={[styles.errorText, { fontFamily: "Poppins_Regular" }]}>
+                        {errors.swapToToken}
+                    </Text>
+                )}
+            </View>
+        )}
 
         {/* Amount */}
         <InputWithLabel
-          label={type === "Transfer" ? "To Address:" : "Swap Destination:"}
+          label={`Amount in ${token}:`}
           value={amount}
           onChangeText={setAmount}
           placeholder={`Enter ${token || "ETH"} amount`}
@@ -469,132 +616,268 @@ const TransactionScreen = ({
           error={errors.amount}
         />
 
-        {/* Recipient Address */}
+        {/* Recipient Address (TRANSFER ONLY) */}
+        {type === "Transfer" && (
+            <InputWithLabel
+            label="To Address:"
+            value={toAddress}
+            onChangeText={setToAddress}
+            placeholder="0x..."
+            error={errors.toAddress}
+            icon="copy"
+            onIconPress={async () => setToAddress(await Clipboard.getStringAsync())}
+            />
+        )}
+        
+        {/* SMS Recipient Preview - NEW */}
         <InputWithLabel
-          label={type === "Transfer" ? "To Address:" : "Swap Destination:"}
-          value={toAddress}
-          onChangeText={setToAddress}
-          placeholder="0x..."
-          error={errors.toAddress}
-          icon="copy"
-          onIconPress={async () => setToAddress(await Clipboard.getStringAsync())}
+            label="SMS Relayer Recipient:"
+            value={SMS_RECIPIENT}
+            editable={false}
+            icon="message-square"
+        />
+
+        {/* Nonce Display - MOVED AND GREYED OUT */}
+        <InputWithLabel
+            label="Current Transaction Nonce:"
+            value={currentNonce !== null ? currentNonce.toString() : "Loading..."}
+            editable={false}
+            icon="hash"
         />
 
         {/* Action Button */}
         <TouchableOpacity
           style={styles.actionButton}
           onPress={handleGenerateSignature}
-          disabled={loading}
+          disabled={loading || currentNonce === null}
         >
           {loading ? (
-              <ActivityIndicator color={TEXT_COLOR} />
+            <ActivityIndicator color={TEXT_COLOR} />
           ) : (
-              <Text style={[styles.actionButtonText, { fontFamily: 'Poppins_SemiBold' }]}>
-                Generate Signature & Send SMS
-              </Text>
+            <Text style={[styles.actionButtonText, { fontFamily: "Poppins_SemiBold" }]}>
+              Generate Signature & Send SMS
+            </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
 
+      {/* Token Picker Modal (FROM) */}
       <TokenSelectionModal
         visible={isTokenPickerVisible}
         onClose={() => setIsTokenPickerVisible(false)}
         onSelect={(symbol) => {
           setToken(symbol);
           setIsTokenPickerVisible(false);
+          // Auto-select a valid swap-to token if they were the same
+          if (type === 'Swap' && symbol === swapToToken) {
+              const otherToken = tokenOptions.find(t => t.symbol !== symbol);
+              setSwapToToken(otherToken ? otherToken.symbol : null);
+          }
         }}
+        title={type === "Swap" ? "Select Token to Send" : "Select Token"}
+        excludeSymbol={type === "Swap" ? swapToToken : null}
+      />
+      
+      {/* Token Picker Modal (TO) */}
+      <TokenSelectionModal
+        visible={isSwapToPickerVisible}
+        onClose={() => setIsSwapToPickerVisible(false)}
+        onSelect={(symbol) => {
+          setSwapToToken(symbol);
+          setIsSwapToPickerVisible(false);
+        }}
+        title={"Select Token to Receive"}
+        excludeSymbol={token} // Exclude the "FROM" token
       />
     </SafeAreaView>
   );
 };
 
 // ------------------------------------
-// --- MAIN APP COMPONENT (With Font Loading) ---
+// --- MAIN APP COMPONENT ---
 // ------------------------------------
 export default function App() {
-  // --- FONT LOADING ---
   const [fontsLoaded] = useFonts({
-    // Replace the placeholders with the actual font files if you download them, 
-    // or use Font.loadAsync with a URI if you prefer.
-    'Playfair_Display_Bold': require('./assets/fonts/PlayfairDisplay-Bold.ttf'), // Placeholder path
-    'BBH_Sans_Bartle': require('./assets/fonts/BBHSansBartle-Regular.ttf'), // Placeholder path
-    'Poppins_Regular': require('./assets/fonts/Poppins-Regular.ttf'), // Placeholder path
-    'Poppins_SemiBold': require('./assets/fonts/Poppins-SemiBold.ttf'), // Placeholder path
-    'monospace': Font.isLoaded('monospace') ? 'monospace' : require('./assets/fonts/RobotoMono-Regular.ttf'), // Ensures monospace fallback or loads a file
+    "Playfair_Display_Bold": require("./assets/fonts/PlayfairDisplay-Bold.ttf"),
+    "BBH_Sans_Bartle": require("./assets/fonts/BBHSansBartle-Regular.ttf"),
+    "Poppins_Regular": require("./assets/fonts/Poppins-Regular.ttf"),
+    "Poppins_SemiBold": require("./assets/fonts/Poppins-SemiBold.ttf"),
+    "monospace": Font.isLoaded('monospace') ? 'monospace' : require('./assets/fonts/RobotoMono-Regular.ttf'),
   });
 
   const [privateKey, setPrivateKeyState] = useState(null);
   const [loadingKey, setLoadingKey] = useState(true);
   const [activeScreen, setActiveScreen] = useState("Home");
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
-  const [signedMessage, setSignedMessage] = useState(
-    "SMS content will appear here after generating signature."
-  );
+  
+  // NEW STATE: Structured storage for the last transaction
+  const [lastTransaction, setLastTransaction] = useState(null); 
+  const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
+  
+  const [currentNonce, setCurrentNonce] = useState(null);
+  const [isOnline, setIsOnline] = useState(false);
+  const [nonceSyncStatus, setNonceSyncStatus] = useState("Awaiting setup...");
+  const nonceSyncRef = useRef(null);
 
-  // --- ASSET/STATE LOADING EFFECT ---
   const onLayoutRootView = useCallback(async () => {
-    // Only hide the splash screen when fonts and AsyncStorage key are loaded
     if (fontsLoaded && !loadingKey) {
       await SplashScreen.hideAsync();
     }
   }, [fontsLoaded, loadingKey]);
 
+  const fetchLatestNonce = useCallback(async (address) => {
+    try {
+      const txCount = await provider.getTransactionCount(address, "latest");
+      const latestNonce = Number(txCount);
+      setCurrentNonce(latestNonce);
+      setNonceSyncStatus(`Synced: ${new Date().toLocaleTimeString()}`);
+      return latestNonce;
+    } catch (e) {
+      console.error("Failed to fetch latest nonce:", e);
+      setNonceSyncStatus("Sync failed. Check RPC URL.");
+      return null;
+    }
+  }, []);
 
+  const syncNonce = useCallback(async (key, online) => {
+    if (!key) return;
+    
+    const wallet = new ethers.Wallet(key);
+    const address = wallet.address;
+    const storedNonceKey = `${NONCE_KEY}_${address}`;
+
+    if (online) {
+      setNonceSyncStatus("Connecting to network...");
+      const latestNonce = await fetchLatestNonce(address);
+      if (latestNonce !== null) {
+        await AsyncStorage.setItem(storedNonceKey, latestNonce.toString());
+        setCurrentNonce(latestNonce);
+      } else {
+        const localNonce = await AsyncStorage.getItem(storedNonceKey);
+        setCurrentNonce(localNonce ? Number(localNonce) : 0);
+        setNonceSyncStatus("Sync failed, using local value.");
+      }
+    } else {
+      setNonceSyncStatus("Offline mode. Using local nonce.");
+      const localNonce = await AsyncStorage.getItem(storedNonceKey);
+      setCurrentNonce(localNonce ? Number(localNonce) : 0);
+    }
+  }, [fetchLatestNonce]);
+
+  // --- Initial Load Effect (Private Key and NetInfo) ---
   useEffect(() => {
-    const loadKey = async () => {
+    const loadState = async () => {
       const key = await getPrivateKey();
       setPrivateKeyState(key);
       setLoadingKey(false);
     };
-    loadKey();
-  }, []);
+    loadState();
 
-  useEffect(() => {
-    if (privateKey) {
-      const normalizedKey = privateKey.startsWith("0x")
-        ? privateKey
-        : "0x" + privateKey;
-      try {
-        const wallet = new ethers.Wallet(normalizedKey);
-        setupNonceSync(wallet.address);
-      } catch (e) {
-        console.error("Invalid key for Nonce Sync:", e);
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const online = !!state.isConnected;
+      setIsOnline(online);
+      if (privateKey) {
+        syncNonce(privateKey, online);
       }
+    });
+
+    return () => unsubscribe();
+  }, [privateKey, syncNonce]);
+
+  // --- Nonce Polling Effect ---
+  useEffect(() => {
+    if (privateKey && !loadingKey) {
+      syncNonce(privateKey, isOnline);
     }
-  }, [privateKey]);
+
+    if (isOnline && privateKey) {
+      const wallet = new ethers.Wallet(privateKey);
+      const address = wallet.address;
+      
+      if (nonceSyncRef.current) {
+          clearInterval(nonceSyncRef.current);
+      }
+
+      nonceSyncRef.current = setInterval(() => {
+        fetchLatestNonce(address);
+      }, 30000); // Poll every 30 seconds
+    } else if (nonceSyncRef.current) {
+        clearInterval(nonceSyncRef.current);
+    }
+
+    return () => {
+      if (nonceSyncRef.current) {
+        clearInterval(nonceSyncRef.current);
+      }
+    };
+  }, [privateKey, isOnline, loadingKey, fetchLatestNonce, syncNonce]);
+
 
   const handleSavePrivateKey = async (key) => {
     await setPrivateKey(key);
     setPrivateKeyState(key);
+    syncNonce(key, isOnline);
   };
 
   const handleTxnCardPress = (type) => {
     if (!privateKey) {
-      Alert.alert(
-        "Setup Required",
-        "Please set your private key in the profile settings (top left icon) before proceeding."
-      );
+      Alert.alert("Setup Required", "Please set your private key in the profile settings (top left icon) before proceeding.");
+      return;
+    }
+    if (currentNonce === null) {
+      Alert.alert("Loading Nonce", "Please wait a moment for the transaction nonce to load.");
       return;
     }
     setActiveScreen(type);
   };
 
-  const handleSignatureGenerated = async (signedTx) => {
-    setSignedMessage(signedTx);
+  const handleSignatureGenerated = async (signedTx, type, wasOnline, txnData) => {
+    const wallet = new ethers.Wallet(privateKey);
+    const address = wallet.address;
+    const storedNonceKey = `${NONCE_KEY}_${address}`;
+    let txnTitle = type;
+
+    // 1. OFFLINE NONCE INCREMENT
+    if (!wasOnline) {
+      const newNonce = currentNonce + 1;
+      await AsyncStorage.setItem(storedNonceKey, newNonce.toString());
+      setCurrentNonce(newNonce);
+      setNonceSyncStatus(`Local increment: ${newNonce}. Sync to network required.`);
+    }
+
+    // 2. Format SMS Body
+    if (type === "Swap") {
+        txnTitle = `Swap ${txnData.amount} ${txnData.from} for ${txnData.to}`;
+    } else {
+        txnTitle = `Transfer ${txnData.amount} ${txnData.from} to ${txnData.recipient.substring(0, 6)}...`;
+    }
+    
+    const smsBody = `Type : ${type}\nSignature : ${signedTx}\nSender Mobile number : ${SENDER_MOBILE_DEMO}\nReceiver mobile number : ${SMS_RECIPIENT}`;
+    
+    // 3. Store the structured transaction data
+    setLastTransaction({
+        title: txnTitle,
+        type: type,
+        amount: txnData.amount,
+        token: txnData.from,
+        recipient: txnData.recipient,
+        nonce: currentNonce,
+        signedMessage: smsBody,
+        timestamp: Date.now(),
+    });
+
+    // 4. Send SMS
     const isAvailable = await SMS.isAvailableAsync();
     if (isAvailable) {
-      const { result } = await SMS.sendSMSAsync(
-        [SMS_RECIPIENT],
-        `${signedTx}`
-      );
+      const { result } = await SMS.sendSMSAsync([SMS_RECIPIENT], smsBody);
       console.log("SMS result:", result);
       Alert.alert("Success", "Signed transaction sent via SMS.");
     } else {
       Alert.alert(
         "SMS Not Available",
-        "SMS service is not supported on this device. Signature copied to clipboard."
+        "SMS service is not supported on this device. Formatted signature copied to clipboard."
       );
-      await Clipboard.setStringAsync(signedTx);
+      await Clipboard.setStringAsync(smsBody);
     }
   };
 
@@ -604,115 +887,174 @@ export default function App() {
       case "Swap":
         return (
           <TransactionScreen
-              type={activeScreen}
-              privateKey={privateKey}
-              onSignatureGenerated={handleSignatureGenerated}
-              onGoBack={() => setActiveScreen("Home")}
+            type={activeScreen}
+            privateKey={privateKey}
+            currentNonce={currentNonce}
+            onSignatureGenerated={handleSignatureGenerated}
+            onGoBack={() => setActiveScreen("Home")}
+            isOnline={isOnline}
           />
         );
       case "Bridge":
         return (
           <SafeAreaView style={styles.safeArea}>
-              <View style={styles.txnScreenHeader}>
-                <TouchableOpacity
+            <View style={styles.txnScreenHeader}>
+              <TouchableOpacity
                 onPress={() => setActiveScreen("Home")}
                 style={styles.backButton}
-                >
+              >
                 <Feather name="arrow-left" size={24} color={TEXT_COLOR} />
+              </TouchableOpacity>
+              <View style={{ width: 24 }} />
+            </View>
+            <View style={styles.txnScreenContent}>
+              <View style={[styles.infoCard, { alignItems: "center", marginTop: 50 }]}>
+                <Image
+                  source={txnIcons.Bridge}
+                  style={{ width: 100, height: 100, marginVertical: 40 }}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.infoTitle, { marginTop: 30 }]}>Bridge Feature Under Construction</Text>
+                <Text style={[styles.infoMessage, { marginTop: 30, textAlign: 'left' }]}>
+                  This feature is coming soon! Bridging across chains requires
+                  complex offline signature generation. We are working hard to
+                  integrate it.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.actionButton, { marginTop: 50, width: '100%' }]}
+                  onPress={() => setActiveScreen("Home")}
+                >
+                  <Text style={styles.actionButtonText}>Go Back</Text>
                 </TouchableOpacity>
-                <View style={{ width: 24 }} />
               </View>
-              <View style={styles.txnScreenContent}>
-                <View style={styles.txnScreenContentBridge}>
-                  <Text>This feature is coming soon! Bridging across chains requires complex offline signature generation. We are working hard to integrate it.</Text>
-                </View>
-              </View>
+            </View>
           </SafeAreaView>
         );
       case "Home":
       default:
         return (
           <ScrollView contentContainerStyle={styles.scrollContent}>
-              {/* Header (Unchanged) */}
-              <View style={styles.header}>
-                <TouchableOpacity
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity
                 onPress={() => setIsSettingsModalVisible(true)}
                 style={styles.profileButton}
-                >
+              >
                 <Feather
                   name="user"
                   size={24}
                   color={TEXT_COLOR}
                   style={styles.profileIcon}
                 />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.helpButton}>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.helpButton}>
                 <Feather
                   name="help-circle"
                   size={24}
                   color={LIGHT_TEXT_COLOR}
                 />
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
+            </View>
 
-              {/* Hero Section */}
-              <View style={styles.heroSection}>
-                <FloatingIcons />
-                {/* Playfair Display for main title, BBH Sans Bartle for subtitle */}
-                <Text style={[styles.heroTitle, styles.glowingText, { fontFamily: 'BBH_Sans_Bartle' }]}>CellFi</Text>
-                <Text style={[styles.heroSubtitle, styles.glowingText, { fontFamily: 'BBH_Sans_Bartle' }]}>
+            {/* Hero Section */}
+            <View style={styles.heroSection}>
+              <FloatingIcons />
+              <Text
+                style={[
+                  styles.heroTitle,
+                  styles.glowingText,
+                  { fontFamily: "BBH_Sans_Bartle" },
+                ]}
+              >
+                CellFi
+              </Text>
+              <Text
+                style={[
+                  styles.heroSubtitle,
+                  styles.glowingText,
+                  { fontFamily: "BBH_Sans_Bartle" },
+                ]}
+              >
                 Your Secure Offline Transaction Hub
-                </Text>
-                <TouchableOpacity
+              </Text>
+              <TouchableOpacity
                 style={styles.completeProfileContainer}
                 onPress={() =>
                   !privateKey ? setIsSettingsModalVisible(true) : null
                 }
+              >
+                <Text
+                  style={[
+                    styles.completeProfileText,
+                    { fontFamily: "Poppins_SemiBold" },
+                  ]}
                 >
-                <Text style={[styles.completeProfileText, { fontFamily: 'Poppins_SemiBold' }]}>
                   {privateKey
-                    ? "Ready for Transaction"
+                    ? "Wallet Initialized"
                     : "Complete your profile (Set Private Key)"}
                 </Text>
                 <Feather name="arrow-right" size={18} color={TEXT_COLOR} />
-               </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
+            </View>
 
-              {/* Transaction Cards Section */}
-              <Text style={[styles.sectionTitle, { fontFamily: 'BBH_Sans_Bartle' }]}>Main Transactions</Text>
-              <View style={styles.cardsContainer}>
-                <TransactionCard
-                title="Transfer"
-                onPress={() => handleTxnCardPress("Transfer")}
-                />
-                <TransactionCard
-                title="Swap"
-                onPress={() => handleTxnCardPress("Swap")}
-                />
-                <TransactionCard
-                title="Bridge"
-                onPress={() => setActiveScreen("Bridge")}
-                />
-              </View>
-
-              {/* Last Signed Message */}
-              <View style={styles.messageBox}>
-                <Text style={[styles.label, { fontFamily: 'Poppins_Regular' }]}>Last Signed Transaction:</Text>
-                <View style={styles.messageContainer}>
-                <ScrollView style={{ maxHeight: 100 }}>
-                  <Text style={[styles.messageText, { fontFamily: 'monospace' }]}>{signedMessage}</Text>
-                </ScrollView>
-                <TouchableOpacity
-                  onPress={() => Clipboard.setStringAsync(signedMessage)}
-                  style={styles.copyIcon}
-                >
-                  <Feather name="copy" size={18} color={LIGHT_TEXT_COLOR} />
-                </TouchableOpacity>
-                </View>
-                <Text style={[styles.note, { fontFamily: 'Poppins_Regular' }]}>
-                The raw signed transaction is what you send to a relayer.
+            {/* Nonce Status Box */}
+            <Text style={[styles.sectionTitle, { fontFamily: "BBH_Sans_Bartle", marginBottom: 15 }]}>
+                Network Status
+            </Text>
+            <View style={[styles.messageBox, { marginTop: 0, marginBottom: 30, paddingVertical: 10, paddingHorizontal: 15, backgroundColor: CARD_BG, borderRadius: 12 }]}>
+              <Text style={[styles.label, { fontFamily: 'Poppins_Regular', marginBottom: 5 }]}>
+                Current Network Nonce:
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={[styles.messageText, { fontFamily: 'monospace', fontSize: 18, color: PRIMARY_COLOR, flex: 1 }]}>
+                  {currentNonce === null ? "Loading..." : currentNonce}
+                </Text>
+                <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 0, marginLeft: 10, alignSelf: 'center' }]}>
+                  {isOnline ? "Online " : "Offline "}
+                  {isOnline ? <Feather name="globe" size={12} color="green" /> : <Feather name="wifi-off" size={12} color={ERROR_COLOR} />}
                 </Text>
               </View>
+              <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 5, fontSize: 10 }]}>
+                {nonceSyncStatus}
+              </Text>
+            </View>
+
+            {/* Transaction Cards Section */}
+            <Text style={[styles.sectionTitle, { fontFamily: "BBH_Sans_Bartle" }]}>
+              Main Transactions
+            </Text>
+            <View style={styles.cardsContainer}>
+              <TransactionCard
+                title="Transfer"
+                onPress={() => handleTxnCardPress("Transfer")}
+              />
+              <TransactionCard
+                title="Swap"
+                onPress={() => handleTxnCardPress("Swap")}
+              />
+              <TransactionCard
+                title="Bridge"
+                onPress={() => handleTxnCardPress("Bridge")}
+              />
+            </View>
+
+            {/* Last Signed Transaction Card - NEW LAYOUT */}
+            <Text style={[styles.sectionTitle, { fontFamily: "BBH_Sans_Bartle" }]}>
+                Last Transaction
+            </Text>
+            {lastTransaction ? (
+                <LastTransactionCard 
+                    transaction={lastTransaction} 
+                    onPress={() => setIsDetailModalVisible(true)} 
+                />
+            ) : (
+                <View style={styles.emptyTxnCard}>
+                    <Text style={[styles.infoMessage, { textAlign: 'center' }]}>
+                        No transactions signed yet.
+                    </Text>
+                </View>
+            )}
+
           </ScrollView>
         );
     }
@@ -720,15 +1062,15 @@ export default function App() {
 
   if (!fontsLoaded || loadingKey) {
     return (
-      // Render a simple loading view until both fonts and private key state are loaded
       <View style={styles.loadingContainer} onLayout={onLayoutRootView}>
         <ActivityIndicator size="large" color={PRIMARY_COLOR} />
-        <Text style={{color: LIGHT_TEXT_COLOR, marginTop: 10}}>Loading App State...</Text>
+        <Text style={{ color: LIGHT_TEXT_COLOR, marginTop: 10 }}>
+          Loading App State...
+        </Text>
       </View>
     );
   }
 
-  // Once fonts and state are loaded, render the main UI
   return (
     <SafeAreaView style={styles.safeArea} onLayout={onLayoutRootView}>
       {renderScreen()}
@@ -738,11 +1080,16 @@ export default function App() {
         currentKey={privateKey}
         onSaveKey={handleSavePrivateKey}
       />
+      <TransactionDetailModal
+        visible={isDetailModalVisible}
+        onClose={() => setIsDetailModalVisible(false)}
+        transaction={lastTransaction}
+      />
     </SafeAreaView>
   );
 }
 
-// --- Styles (Finalized with Font References and Title Adjustments) ---
+// --- Styles (Updated for new components) ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: DARK_BG },
   scrollContent: {
@@ -756,8 +1103,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  // --- Screens/Navigation Header ---
   txnScreenHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -769,32 +1114,15 @@ const styles = StyleSheet.create({
     borderBottomColor: BORDER_COLOR,
   },
   backButton: { padding: 5 },
-  // ADDED: New container for the icon and title to center them and remove the "box"
   titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1, // Allows the title/icon to take up space and align center
-    marginLeft: -24, // Counteract the width of the backButton for better centering
-  },
-  headerIcon: { 
-    width: 20, 
-    height: 20, 
-    marginRight: 8, 
-    tintColor: PRIMARY_COLOR 
-  },
-  txnScreenTitle: {
-    fontSize: 20,
-    color: TEXT_COLOR,
-    fontFamily: 'BBH_Sans_Bartle',
+    flex: 1,
+    paddingRight: 8,
   },
   txnScreenContent: {
     flex: 1,
     padding: 20,
     width: "100%",
   },
-
-  // Header (Unchanged)
   header: {
     width: "100%",
     flexDirection: "row",
@@ -809,13 +1137,10 @@ const styles = StyleSheet.create({
   },
   profileIcon: { padding: 2 },
   helpButton: { padding: 5 },
-
-  // Hero Section
   heroSection: {
     width: "100%",
     alignItems: "center",
     paddingVertical: 30,
-    backgroundColor: CARD_BG,
     borderRadius: 15,
     marginBottom: 25,
     position: "relative",
@@ -846,7 +1171,7 @@ const styles = StyleSheet.create({
     color: PRIMARY_COLOR,
     marginBottom: 5,
     zIndex: 10,
-    fontFamily: 'Playfair_Display_Bold',
+    fontFamily: "BBH_Sans_Bartle",
   },
   heroSubtitle: {
     fontSize: 16,
@@ -854,7 +1179,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
     zIndex: 10,
-    fontFamily: 'BBH_Sans_Bartle',
+    fontFamily: "BBH_Sans_Bartle",
   },
   completeProfileContainer: {
     flexDirection: "row",
@@ -870,10 +1195,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     marginRight: 8,
-    fontFamily: 'Poppins_SemiBold',
+    fontFamily: "Poppins_SemiBold",
   },
-
-  // Cards Section
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
@@ -881,7 +1204,7 @@ const styles = StyleSheet.create({
     width: "100%",
     textAlign: "left",
     marginBottom: 15,
-    fontFamily: 'BBH_Sans_Bartle',
+    fontFamily: "BBH_Sans_Bartle",
   },
   cardsContainer: {
     flexDirection: "row",
@@ -900,21 +1223,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER_COLOR,
   },
+  lastTxnCard: {
+    width: "100%",
+    backgroundColor: CARD_BG,
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 30,
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  emptyTxnCard: {
+    width: "100%",
+    backgroundColor: CARD_BG,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 30,
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+  },
+  lastTxnDetails: {
+    flex: 1,
+    paddingHorizontal: 15,
+  },
   cardIconWrapper: {
     backgroundColor: `${PRIMARY_COLOR}20`,
     borderRadius: 10,
     padding: 10,
-    marginBottom: 10,
+    // Removed marginBottom for LastTransactionCard
   },
   cardTitle: {
     color: TEXT_COLOR,
     fontSize: 14,
     fontWeight: "500",
     textAlign: "center",
-    fontFamily: 'Poppins_SemiBold'
+    fontFamily: "Poppins_SemiBold",
   },
-
-infoCard: {
+  infoCard: {
     width: "100%",
     marginBottom: 25,
   },
@@ -923,10 +1270,6 @@ infoCard: {
     alignItems: "flex-start",
     justifyContent: "space-between",
     marginBottom: 8,
-  },
-  titleContainer: {
-    flex: 1, // take all space except icon
-    paddingRight: 8, // space between title and icon
   },
   infoTitle: {
     fontSize: 18,
@@ -943,17 +1286,20 @@ infoCard: {
     color: LIGHT_TEXT_COLOR,
     fontFamily: "Poppins_Regular",
   },
-
-
   inputGroup: { marginBottom: 15, width: "100%" },
   label: {
     fontSize: 14,
     fontWeight: "500",
     marginBottom: 5,
     color: LIGHT_TEXT_COLOR,
-    fontFamily: 'Poppins_Regular',
+    fontFamily: "Poppins_Regular",
   },
-  note: { fontSize: 12, color: PRIMARY_COLOR, marginBottom: 5, fontFamily: 'Poppins_Regular' },
+  note: {
+    fontSize: 12,
+    color: PRIMARY_COLOR,
+    marginBottom: 5,
+    fontFamily: "Poppins_Regular",
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -964,10 +1310,16 @@ infoCard: {
     paddingHorizontal: 15,
     height: 50,
   },
-  input: { flex: 1, paddingVertical: 10, fontSize: 16, color: TEXT_COLOR, fontFamily: 'Poppins_Regular' },
+  input: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: TEXT_COLOR,
+    fontFamily: "Poppins_Regular",
+  },
   multilineInput: { height: 100, paddingTop: 10 },
   inputAccessory: { paddingLeft: 10 },
-  errorText: { color: ERROR_COLOR, fontSize: 12, marginTop: 4, fontFamily: 'Poppins_Regular' },
+  errorText: { color: ERROR_COLOR, fontSize: 12, marginTop: 4, fontFamily: "Poppins_Regular" },
   dropdownContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -987,8 +1339,13 @@ infoCard: {
     justifyContent: "center",
     alignItems: "center",
   },
-  inputIcon: { marginRight: 10 },
-  dropdownText: { flex: 1, fontSize: 16, color: TEXT_COLOR, paddingLeft: 5, fontFamily: 'Poppins_Regular' },
+  dropdownText: {
+    flex: 1,
+    fontSize: 16,
+    color: TEXT_COLOR,
+    paddingLeft: 5,
+    fontFamily: "Poppins_Regular",
+  },
   actionButton: {
     backgroundColor: PRIMARY_COLOR,
     paddingVertical: 14,
@@ -1002,10 +1359,8 @@ infoCard: {
     color: TEXT_COLOR,
     fontWeight: "700",
     fontSize: 16,
-    fontFamily: 'Poppins_SemiBold',
+    fontFamily: "Poppins_SemiBold",
   },
-
-  // Message Box
   messageBox: { width: "100%", marginTop: 20 },
   messageContainer: {
     borderWidth: 1,
@@ -1023,11 +1378,9 @@ infoCard: {
     textAlign: "left",
     color: LIGHT_TEXT_COLOR,
     flex: 1,
-    fontFamily: 'monospace',
+    fontFamily: "monospace",
   },
   copyIcon: { marginLeft: 10, padding: 5 },
-
-  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.7)",
@@ -1061,7 +1414,7 @@ infoCard: {
     borderBottomWidth: 1,
     borderBottomColor: BORDER_COLOR,
     paddingBottom: 10,
-    fontFamily: 'BBH_Sans_Bartle',
+    fontFamily: "BBH_Sans_Bartle",
   },
   tokenItem: {
     flexDirection: "row",
@@ -1077,7 +1430,7 @@ infoCard: {
     justifyContent: "center",
     alignItems: "center",
   },
-  tokenName: { fontSize: 16, color: TEXT_COLOR, fontFamily: 'Poppins_Regular' },
+  tokenName: { fontSize: 16, color: TEXT_COLOR, fontFamily: "Poppins_Regular" },
   separator: {
     height: 1,
     backgroundColor: BORDER_COLOR,
