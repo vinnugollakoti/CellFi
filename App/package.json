@@ -11,12 +11,18 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "@web3icons/react": "^4.0.27",
+    "axios": "^1.12.2",
+    "ethers": "^6.15.0",
     "expo": "~54.0.18",
+    "expo-clipboard": "^8.0.7",
+    "expo-sms": "~14.0.7",
     "expo-status-bar": "~3.0.8",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "^5.6.1",
+    "react-native-sms": "^1.12.0",
     "react-native-svg": "^15.12.1"
   },
   "private": true
