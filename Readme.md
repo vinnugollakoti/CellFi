@@ -31,13 +31,13 @@ CellFi is currently operational on a public testnet:
 ### Mobile App
 
 See how simple it is to initiate an offline transaction directly from the CellFi app.
-![Home Page](./Screenshots/CellFi-home.jpg)
-![Transfer page](./Screenshots/Transfer.jpg)
-![Token Selection](./Screenshots/TokenSelect.jpg)
-![Swap page](./Screenshots/Swap.jpg)
-![Bridge page](./Screenshots/Bridge.jpg)
-![Transation Confirmation](./Screenshots/TxnConfirmation.jpg)
-![Last Transation](./Screenshots/Transaction.jpg)
+![Home Page](./Screenshots/resized/CellFi-home.jpg)
+![Transfer page](./Screenshots/resized/Transfer.jpg)
+![Token Selection](./Screenshots/resized/TokenSelect.jpg)
+![Swap page](./Screenshots/resized/Swap.jpg)
+![Bridge page](./Screenshots/resized/Bridge.jpg)
+![Transation Confirmation](./Screenshots/resized/TxnConfirmation.jpg)
+![Last Transation](./Screenshots/resized/Transaction.jpg)
 
 ### Block Scanner Proof
 
