@@ -50,7 +50,7 @@ const SEPOLIA_CHAIN_ID = 11155111;
 const SMS_RECIPIENT = "+916301181244";
 const SENDER_MOBILE_DEMO = "+919999999999";
 // NOTE: You MUST replace this with a valid RPC endpoint (e.g., Infura/Alchemy)
-const SEPOLIA_RPC_URL = "https://sepolia.infura.io/v3/ee5a05b510a943fd8cfd9584671a3809"; 
+const SEPOLIA_RPC_URL = "https://sepolia.infura.io/v3/ee5a05b510a943fd8cfd9584671a3809";
 const SWAP_CONTRACT_ADDRESS = "0x7a250d5630B4cF539739dF2C5cEABc630CEB4323"; // Uniswap V2 Router (Placeholder)
 
 const { width } = Dimensions.get("window");
@@ -78,11 +78,15 @@ const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC_URL);
 const getPrivateKey = async () => AsyncStorage.getItem(PRIVATE_KEY_KEY);
 const setPrivateKey = async (key) =>
   AsyncStorage.setItem(PRIVATE_KEY_KEY, key.replace(/\s+/g, ""));
+const removePrivateKey = async () => AsyncStorage.removeItem(PRIVATE_KEY_KEY);
+
 
 async function generateSignature(privateKey, toAddress, amountEth, nonce) {
   if (!privateKey.startsWith("0x")) privateKey = "0x" + privateKey.trim();
   const wallet = new ethers.Wallet(privateKey);
 
+  // NOTE: This utility ONLY creates a basic ETH transfer transaction.
+  // Token Swaps/Interactions require encoding function data, which is omitted here.
   const tx = {
     to: toAddress,
     value: ethers.parseEther(amountEth.toString()),
@@ -328,7 +332,7 @@ const TokenSelectionModal = ({ visible, onClose, onSelect, title = "Select Token
   </Modal>
 );
 
-const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
+const SettingsModal = ({ visible, onClose, currentKey, onSaveKey, onRemoveKey }) => {
   const [newKey, setNewKey] = useState(currentKey || "");
   const [showKey, setShowKey] = useState(false);
   const [error, setError] = useState("");
@@ -350,6 +354,28 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
     Alert.alert("Success", "Private key saved securely.");
   };
 
+  const handleRemove = () => {
+    Alert.alert(
+        "Confirm Removal",
+        "Are you sure you want to remove your private key? You will lose access to sign transactions until a new one is set.",
+        [
+            {
+                text: "Cancel",
+                style: "cancel"
+            },
+            {
+                text: "Remove",
+                style: "destructive",
+                onPress: () => {
+                    onRemoveKey();
+                    onClose();
+                    Alert.alert("Removed", "Private key successfully removed.");
+                }
+            }
+        ]
+    );
+  };
+
   return (
     <Modal
       visible={visible}
@@ -360,7 +386,7 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
       <View style={styles.modalOverlay}>
         <Pressable style={styles.modalDismissArea} onPress={onClose} />
         <View style={styles.settingsModalContent}>
-          <Text style={[styles.modalTitle, { fontFamily: "BBH_Sans_Bartle" }]}>
+          <Text style={[styles.modalTitle, { marginBottom: 15 }]}>
             Profile & Settings
           </Text>
 
@@ -379,11 +405,20 @@ const SettingsModal = ({ visible, onClose, currentKey, onSaveKey }) => {
             only stored locally.
           </Text>
 
-          <TouchableOpacity style={styles.actionButton} onPress={handleSave}>
-            <Text style={[styles.actionButtonText, { fontFamily: "Poppins_SemiBold" }]}>
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <Text style={[styles.saveButtonText, { fontFamily: "Poppins_SemiBold" }]}>
               Save Private Key
             </Text>
           </TouchableOpacity>
+          
+          {/* NEW REMOVE KEY BUTTON */}
+          {currentKey && (
+              <TouchableOpacity style={[styles.actionButton, { backgroundColor: ERROR_COLOR, marginTop: 15 }]} onPress={handleRemove}>
+                <Text style={[styles.actionButtonText, { fontFamily: "Poppins_SemiBold" }]}>
+                  Remove Private Key
+                </Text>
+              </TouchableOpacity>
+          )}
 
           <View style={styles.separator} />
           <Text style={[styles.note, { fontFamily: "Poppins_Regular" }]}>
@@ -424,7 +459,10 @@ const TransactionDetailModal = ({ visible, onClose, transaction }) => {
                             </Text>
                         </ScrollView>
                         <TouchableOpacity
-                            onPress={() => Clipboard.setStringAsync(transaction.signedMessage)}
+                            onPress={() => {
+                                Clipboard.setStringAsync(transaction.signedMessage);
+                                Alert.alert("Copied", "Raw signed message copied to clipboard.");
+                            }}
                             style={styles.copyIcon}
                         >
                             <Feather name="copy" size={18} color={LIGHT_TEXT_COLOR} />
@@ -452,6 +490,7 @@ const TransactionScreen = ({
   onGoBack,
   isOnline,
 }) => {
+  // Only allow ETH for Transfer/Swap as the current signing utility only supports ETH value transfer
   const [token, setToken] = useState("ETH"); 
   const [swapToToken, setSwapToToken] = useState("BTC"); 
   const [amount, setAmount] = useState("");
@@ -473,6 +512,13 @@ const TransactionScreen = ({
     setToAddress(type === "Transfer" ? "" : SWAP_CONTRACT_ADDRESS);
   }, [type]);
 
+  // Force token to ETH if type is Swap or Bridge due to signing limitations
+  useEffect(() => {
+      if (type !== 'Transfer') {
+          setToken('ETH');
+      }
+  }, [type]);
+
   const selectedTokenData = tokenOptions.find((t) => t.symbol === token);
   const CurrentTokenIcon = selectedTokenData ? selectedTokenData.IconComponent : null;
   const SwapToTokenIcon = tokenOptions.find((t) => t.symbol === swapToToken)?.IconComponent;
@@ -484,6 +530,11 @@ const TransactionScreen = ({
     if (!token) newErrors.token = "Please select a token.";
     if (!amount || isNaN(amount) || Number(amount) <= 0)
       newErrors.amount = "Enter a valid numeric amount.";
+      
+    // CORE VALIDATION: Only ETH is supported for non-Transfer types with simple value signing
+    if (type !== "Transfer" && token !== "ETH") {
+        newErrors.token = "Only ETH is currently supported for this transaction type.";
+    }
 
     if (type === "Transfer") {
       if (!toAddress) newErrors.toAddress = "Recipient address is required.";
@@ -492,10 +543,14 @@ const TransactionScreen = ({
     }
 
     if (type === "Swap") {
+        // Swap Contract address is hardcoded and validated to ensure it's a contract interaction
+        if (!ethers.isAddress(SWAP_CONTRACT_ADDRESS)) {
+            newErrors.contract = "Invalid Swap Contract Address in Constants.";
+        }
         if (!swapToToken) newErrors.swapToToken = "Please select a token to receive.";
-        // VALIDATION: User cannot swap a token to itself
-        if (token === swapToToken) newErrors.swapToToken = "Cannot swap a token to itself.";
     }
+    
+    // Bridge is just an info screen now, so no extra validation needed
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -510,6 +565,10 @@ const TransactionScreen = ({
     if (currentNonce === null) {
       Alert.alert("Nonce Error", "Nonce not loaded. Please wait.");
       return;
+    }
+    if (type !== 'Transfer' && token !== 'ETH') {
+        Alert.alert("Limitation", "Only ETH value transfers are supported for Swap/Bridge signatures at this time.");
+        return;
     }
 
     setLoading(true);
@@ -539,6 +598,7 @@ const TransactionScreen = ({
         <TouchableOpacity onPress={onGoBack} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={TEXT_COLOR} />
         </TouchableOpacity>
+        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.txnScreenContent}>
@@ -547,7 +607,7 @@ const TransactionScreen = ({
           title={`${type} Transaction`}
           message={`Configure your offline ${type.toLowerCase()} details. The signed transaction will be sent via SMS to the relayer address.`}
         />
-
+        
         {/* Token Selection: FROM */}
         <View style={styles.inputGroup}>
           <Text style={[styles.label, { fontFamily: "Poppins_Regular" }]}>
@@ -555,7 +615,7 @@ const TransactionScreen = ({
           </Text>
           <TouchableOpacity
             style={styles.dropdownContainer}
-            onPress={() => setIsTokenPickerVisible(true)}
+            onPress={() => type === 'Transfer' ? setIsTokenPickerVisible(true) : null} // Only allow token selection for Transfer
           >
             {CurrentTokenIcon ? (
               <View style={styles.tokenIconContainer}>
@@ -567,8 +627,13 @@ const TransactionScreen = ({
             <Text style={[styles.dropdownText, { fontFamily: "Poppins_Regular" }]}>
               {token || "Select your token"}
             </Text>
-            <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />
+            {type === 'Transfer' && <Feather name="chevron-down" size={18} color={LIGHT_TEXT_COLOR} />}
           </TouchableOpacity>
+          {/* {type !== 'Transfer' && (
+              <Text style={[styles.note, { color: ERROR_COLOR, marginTop: 4, fontFamily: "Poppins_Regular" }]}>
+                  ⚠️ Only **ETH** is available for this transaction type using simple signature generation.
+              </Text>
+          )} */}
           {errors.token && (
             <Text style={[styles.errorText, { fontFamily: "Poppins_Regular" }]}>
               {errors.token}
@@ -629,7 +694,17 @@ const TransactionScreen = ({
             />
         )}
         
-        {/* SMS Recipient Preview - NEW */}
+        {/* Contract Address (SWAP/BRIDGE ONLY) - Read Only */}
+        {(type === "Swap" || type === "Bridge") && (
+            <InputWithLabel
+            label={`${type} Contract/Relayer Address (Recipient):`}
+            value={type === "Swap" ? SWAP_CONTRACT_ADDRESS : "Not Applicable Yet"}
+            editable={false}
+            icon="server"
+            />
+        )}
+        
+        {/* SMS Recipient Preview */}
         <InputWithLabel
             label="SMS Relayer Recipient:"
             value={SMS_RECIPIENT}
@@ -661,26 +736,21 @@ const TransactionScreen = ({
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Token Picker Modal (FROM) */}
+      {/* Token Picker Modal (FROM) - Only for Transfer */}
       <TokenSelectionModal
-        visible={isTokenPickerVisible}
+        visible={isTokenPickerVisible && type === 'Transfer'}
         onClose={() => setIsTokenPickerVisible(false)}
         onSelect={(symbol) => {
           setToken(symbol);
           setIsTokenPickerVisible(false);
-          // Auto-select a valid swap-to token if they were the same
-          if (type === 'Swap' && symbol === swapToToken) {
-              const otherToken = tokenOptions.find(t => t.symbol !== symbol);
-              setSwapToToken(otherToken ? otherToken.symbol : null);
-          }
         }}
-        title={type === "Swap" ? "Select Token to Send" : "Select Token"}
-        excludeSymbol={type === "Swap" ? swapToToken : null}
+        title={"Select Token"}
+        excludeSymbol={null}
       />
       
-      {/* Token Picker Modal (TO) */}
+      {/* Token Picker Modal (TO) - Only for Swap */}
       <TokenSelectionModal
-        visible={isSwapToPickerVisible}
+        visible={isSwapToPickerVisible && type === 'Swap'}
         onClose={() => setIsSwapToPickerVisible(false)}
         onSelect={(symbol) => {
           setSwapToToken(symbol);
@@ -740,7 +810,11 @@ export default function App() {
   }, []);
 
   const syncNonce = useCallback(async (key, online) => {
-    if (!key) return;
+    if (!key) {
+        setCurrentNonce(null);
+        setNonceSyncStatus("Set Private Key in Profile.");
+        return;
+    }
     
     const wallet = new ethers.Wallet(key);
     const address = wallet.address;
@@ -776,13 +850,14 @@ export default function App() {
     const unsubscribe = NetInfo.addEventListener((state) => {
       const online = !!state.isConnected;
       setIsOnline(online);
-      if (privateKey) {
+      // Wait for key to be loaded before initial sync
+      if (!loadingKey) {
         syncNonce(privateKey, online);
       }
     });
 
     return () => unsubscribe();
-  }, [privateKey, syncNonce]);
+  }, [privateKey, syncNonce, loadingKey]);
 
   // --- Nonce Polling Effect ---
   useEffect(() => {
@@ -818,6 +893,13 @@ export default function App() {
     setPrivateKeyState(key);
     syncNonce(key, isOnline);
   };
+  
+  const handleRemovePrivateKey = async () => {
+      await removePrivateKey();
+      setPrivateKeyState(null);
+      setCurrentNonce(null);
+      setNonceSyncStatus("Private key removed. Please set a new one.");
+  };
 
   const handleTxnCardPress = (type) => {
     if (!privateKey) {
@@ -847,11 +929,14 @@ export default function App() {
 
     // 2. Format SMS Body
     if (type === "Swap") {
-        txnTitle = `Swap ${txnData.amount} ${txnData.from} for ${txnData.to}`;
-    } else {
+        txnTitle = `Swap ${txnData.amount} ${txnData.from} via Contract`;
+    } else if (type === "Transfer") {
         txnTitle = `Transfer ${txnData.amount} ${txnData.from} to ${txnData.recipient.substring(0, 6)}...`;
+    } else { // Bridge
+        txnTitle = `Bridge ${txnData.amount} ${txnData.from} (Basic Signature)`;
     }
     
+    // The server only needs the signed transaction for relaying
     const smsBody = `Type : ${type}\nSignature : ${signedTx}\nSender Mobile number : ${SENDER_MOBILE_DEMO}\nReceiver mobile number : ${SMS_RECIPIENT}`;
     
     // 3. Store the structured transaction data
@@ -917,8 +1002,8 @@ export default function App() {
                 <Text style={[styles.infoTitle, { marginTop: 30 }]}>Bridge Feature Under Construction</Text>
                 <Text style={[styles.infoMessage, { marginTop: 30, textAlign: 'left' }]}>
                   This feature is coming soon! Bridging across chains requires
-                  complex offline signature generation. We are working hard to
-                  integrate it.
+                  complex offline signature generation (contract interaction). We are working hard to
+                  integrate it. For now, only simple ETH transfers are supported.
                 </Text>
                 <TouchableOpacity
                   style={[styles.actionButton, { marginTop: 50, width: '100%' }]}
@@ -963,7 +1048,6 @@ export default function App() {
                 style={[
                   styles.heroTitle,
                   styles.glowingText,
-                  { fontFamily: "BBH_Sans_Bartle" },
                 ]}
               >
                 CellFi
@@ -972,7 +1056,6 @@ export default function App() {
                 style={[
                   styles.heroSubtitle,
                   styles.glowingText,
-                  { fontFamily: "BBH_Sans_Bartle" },
                 ]}
               >
                 Your Secure Offline Transaction Hub
@@ -989,11 +1072,13 @@ export default function App() {
                     { fontFamily: "Poppins_SemiBold" },
                   ]}
                 >
+                  {/* TEXT CHANGE APPLIED HERE */}
                   {privateKey
-                    ? "Wallet Initialized"
+                    ? "Private key added"
                     : "Complete your profile (Set Private Key)"}
                 </Text>
-                <Feather name="arrow-right" size={18} color={TEXT_COLOR} />
+                {/* ICON CHANGE APPLIED HERE */}
+                <Feather name={privateKey ? "check-circle" : "arrow-right"} size={18} color={TEXT_COLOR} />
               </TouchableOpacity>
             </View>
 
@@ -1006,17 +1091,20 @@ export default function App() {
                 Current Network Nonce:
               </Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={[styles.messageText, { fontFamily: 'monospace', fontSize: 18, color: PRIMARY_COLOR, flex: 1 }]}>
-                  {currentNonce === null ? "Loading..." : currentNonce}
-                </Text>
-                <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 0, marginLeft: 10, alignSelf: 'center' }]}>
-                  {isOnline ? "Online " : "Offline "}
-                  {isOnline ? <Feather name="globe" size={12} color="green" /> : <Feather name="wifi-off" size={12} color={ERROR_COLOR} />}
-                </Text>
+                <View>
+                  <Text style={{ color: PRIMARY_COLOR, fontSize: 12, fontWeight: 'bold'}}>
+                      {isOnline ? "ONLINE" : "OFFLINE"}
+                  </Text>
+                  <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 5, fontSize: 10 }]}>
+                    {nonceSyncStatus}
+                  </Text>  
+                </View>
+                <View>
+                  <Text style={[styles.messageText, { fontFamily: 'BBH_Sans_Bartle', fontSize: 30, color: TEXT_COLOR}]}>
+                    {currentNonce === null ? "Loading..." : currentNonce}
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.note, { color: LIGHT_TEXT_COLOR, marginTop: 5, fontSize: 10 }]}>
-                {nonceSyncStatus}
-              </Text>
             </View>
 
             {/* Transaction Cards Section */}
@@ -1079,6 +1167,7 @@ export default function App() {
         onClose={() => setIsSettingsModalVisible(false)}
         currentKey={privateKey}
         onSaveKey={handleSavePrivateKey}
+        onRemoveKey={handleRemovePrivateKey}
       />
       <TransactionDetailModal
         visible={isDetailModalVisible}
@@ -1166,20 +1255,18 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   heroTitle: {
-    fontSize: 48,
-    fontWeight: "800",
-    color: PRIMARY_COLOR,
+    fontSize: 36,
+    color: TEXT_COLOR,
     marginBottom: 5,
     zIndex: 10,
     fontFamily: "BBH_Sans_Bartle",
   },
   heroSubtitle: {
-    fontSize: 16,
     color: LIGHT_TEXT_COLOR,
     textAlign: "center",
     marginBottom: 20,
     zIndex: 10,
-    fontFamily: "BBH_Sans_Bartle",
+    fontFamily: "Poppins_Regular",
   },
   completeProfileContainer: {
     flexDirection: "row",
@@ -1361,6 +1448,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Poppins_SemiBold",
   },
+  saveButton: {
+    backgroundColor: DARK_BG,
+    borderColor: BORDER_COLOR,
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginTop: 20,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  saveButtonText: {
+    color: TEXT_COLOR,
+    fontWeight: "700",
+    fontSize: 16,
+    borderColor: BORDER_COLOR,
+    fontFamily: "Poppins_SemiBold",
+  },
   messageBox: { width: "100%", marginTop: 20 },
   messageContainer: {
     borderWidth: 1,
@@ -1368,7 +1473,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 15,
     marginTop: 10,
-    backgroundColor: CARD_BG,
+    backgroundColor: DARK_BG, // Changed from CARD_BG for contrast
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -1379,8 +1484,9 @@ const styles = StyleSheet.create({
     color: LIGHT_TEXT_COLOR,
     flex: 1,
     fontFamily: "monospace",
+    lineHeight: 18,
   },
-  copyIcon: { marginLeft: 10, padding: 5 },
+  copyIcon: { marginLeft: 10, padding: 5, backgroundColor: BORDER_COLOR, borderRadius: 5 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.7)",
@@ -1407,8 +1513,7 @@ const styles = StyleSheet.create({
     maxHeight: "90%",
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
+    fontSize: 16,
     marginBottom: 20,
     color: TEXT_COLOR,
     borderBottomWidth: 1,
