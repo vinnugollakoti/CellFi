@@ -43,9 +43,8 @@ See how simple it is to initiate an offline transaction directly from the CellFi
 
 Proof of the transaction successfully executed on the Sepolia Testnet after being sent via SMS.
 
-|                                      |
-| :----------------------------------: |
-| **Transaction on Sepolia Etherscan** |
+![Transation logs](./Screenshots/Logs.jpg)
+![Transation logs](./Screenshots/Etherscan.png)
 
 ## 🛠️ Technology Stack
 
