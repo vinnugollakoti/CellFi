@@ -5,7 +5,7 @@ const Jimp = require('jimp');
 // Configuration
 const INPUT_DIR = path.join(process.cwd(), 'Screenshots');
 const OUTPUT_DIR = path.join(INPUT_DIR, 'resized');
-const MAX_WIDTH = 480;
+const MAX_WIDTH = 200;
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 
 async function ensureDir(dir) {
